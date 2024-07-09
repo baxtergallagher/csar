@@ -2,6 +2,8 @@ library(quanteda)
 library(tidyverse)
 library(readtext)
 library(textdata)
+library(reshape2)
+library(ggplot2)
 
 # read text file
 text <- readtext("~/csar/Civics_texts/The Federalist Papers (1787-88).txt")
@@ -40,3 +42,21 @@ sentiment_dfm <- dfm_lookup(dfm, dictionary = nrc_dict)
 
 # display head of sentiment scores
 head(sentiment_dfm)
+
+# convert to tidy
+sentiment_scores <- convert(sentiment_dfm, to = "data.frame")
+
+# doc identifier
+sentiment_scores$docs <- rownames(sentiment_scores)
+
+# reshaping the data for visualization
+sentiment_scores <- melt(sentiment_scores, id.vars = "docs", variable.name = "Sentiment", value.name = "Count")
+
+# plotting the sentiment scores
+ggplot(sentiment_scores, aes(x = Sentiment, y = Count, fill = Sentiment)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Sentiment Analysis of The Federalist Papers",
+       x = "Sentiment",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
