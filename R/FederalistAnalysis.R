@@ -1,39 +1,82 @@
-# libraries
+library(quanteda)
 library(tidyverse)
-library(tidytext)
+library(readtext)
+library(textdata)
+library(reshape2)
+library(ggplot2)
 
-# read text file into a vector
-path_to_file <- "The Federalist Papers (1787-88).txt"
-t1 <- readLines(path_to_file)
+# read text file
+text <- readtext("~/csar/Civics_texts/The Federalist Papers (1787-88).txt")
 
-# convert to tidy format
-# create data frame from text lines
-t1_df <- tibble(line = 1:length(t1), text = t1)
+# corpus
+corp2 <- corpus(text)
 
-# tokenize text to words
-t1_words <- t1_df %>%
-  unnest_tokens(word, text)
+# tokenize
+tokens <- tokens(corp2, remove_punct = TRUE, remove_symbols = TRUE, remove_numbers = TRUE)
 
-# basic text analysis
-# remove stop words
-data("stop_words")
-t1_cleaned <- t1_words %>%
-  anti_join(stop_words)
+# remove stopwords
+tokens <- tokens_select(tokens, pattern = stopwords("en"), selection = "remove")
 
-# word frequencies
-word_counts <- t1_cleaned %>%
-  count(word, sort = TRUE)
+# create DFM
+dfm <- dfm(tokens)
 
-# top 10 most frequent words
-print(word_counts %>% top_n(10))
+# sentiment lexicon
+nrc <- textdata::lexicon_nrc()
 
-# visualizing and graphing
-word_counts %>%
-  top_n(20) %>%
-  ggplot(aes(x = reorder(word, n), y = n)) +
-  geom_col() +
-  coord_flip() +
-  labs(title = "Top 20 Most Frequent Words in The Federalist Papers",
-       x = "Words",
-       y = "Frequency") +
-  theme_minimal()
+# NRC lexicon to dictionary 
+nrc_dict <- dictionary(list(
+  anger = nrc %>% filter(sentiment == "anger") %>% pull(word),
+  anticipation = nrc %>% filter(sentiment == "anticipation") %>% pull(word),
+  disgust = nrc %>% filter(sentiment == "disgust") %>% pull(word),
+  fear = nrc %>% filter(sentiment == "fear") %>% pull(word),
+  joy = nrc %>% filter(sentiment == "joy") %>% pull(word),
+  sadness = nrc %>% filter(sentiment == "sadness") %>% pull(word),
+  surprise = nrc %>% filter(sentiment == "surprise") %>% pull(word),
+  trust = nrc %>% filter(sentiment == "trust") %>% pull(word),
+  negative = nrc %>% filter(sentiment == "negative") %>% pull(word),
+  positive = nrc %>% filter(sentiment == "positive") %>% pull(word)
+))
+
+# sentiment analysis
+sentiment_dfm <- dfm_lookup(dfm, dictionary = nrc_dict)
+
+# display head of sentiment scores
+head(sentiment_dfm)
+
+# convert to tidy
+sentiment_scores <- convert(sentiment_dfm, to = "data.frame")
+
+# doc identifier
+sentiment_scores$docs <- rownames(sentiment_scores)
+
+# reshaping the data for visualization
+sentiment_scores <- melt(sentiment_scores, id.vars = "docs", variable.name = "Sentiment", value.name = "Count")
+
+# ensure 'Count' is numeric
+sentiment_scores$Count <- as.numeric(sentiment_scores$Count)
+
+# create a summary table
+summary_table <- sentiment_scores %>%
+  group_by(Sentiment) %>%
+  summarise(Total = sum(Count, na.rm = TRUE)) %>%
+  arrange(desc(Total))
+
+# print the summary table
+print(summary_table)
+
+# add row numbers to the summary table
+summary_table <- summary_table %>%
+  mutate(Rank = row_number()) %>%
+  select(Rank, everything())
+
+# save the summary table to a file
+write.csv(summary_table, "~/csar/Civics_texts/sentiment_summary_table.csv", row.names = FALSE)
+
+# plotting the sentiment scores
+ggplot(sentiment_scores, aes(x = Sentiment, y = Count, fill = Sentiment)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Sentiment Analysis of The Federalist Papers",
+       x = "Sentiment",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
